@@ -1,0 +1,27 @@
+{
+  "name": "pinboard",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pinned control plane: directory, placement, and HTTP proxy",
+  "type": "module",
+  "main": "dist/src/main.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/src/main.js",
+    "test": "tsc && node --test \"dist/test/*.test.js\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "ioredis": "^5.6.1",
+    "undici": "^7.10.0",
+    "ws": "^8.18.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/ws": "^8.18.1",
+    "typescript": "^5.8.3"
+  }
+}
