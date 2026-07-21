@@ -8,9 +8,11 @@ version = "0.1.0"
 description = "One live instance of your class per id, with an HTTP surface"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = ["fastapi>=0.115", "starlette>=0.37"]
+dependencies = ["fastapi>=0.115", "starlette>=0.37", "websockets>=13"]
 
 [project.optional-dependencies]
+psutil = ["psutil>=5.9"]
+langgraph = ["langgraph-checkpoint>=2"]
 dev = ["pytest", "pytest-asyncio", "httpx", "ruff"]
 
 [tool.hatch.build.targets.wheel]
