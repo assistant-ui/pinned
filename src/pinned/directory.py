@@ -9,21 +9,26 @@ from fastapi import HTTPException
 from starlette.responses import Response
 
 from .api import PinnedAPI
+from .lease import Lease
 
 
 class InstanceRecord:
-    def __init__(self, id: str, instance: PinnedAPI) -> None:
+    def __init__(self, id: str, instance: PinnedAPI, lease: Lease | None = None) -> None:
         self.id = id
         self.instance = instance
+        self.lease = lease
         self.tasks: set[asyncio.Task[Any]] = set()
         self.active = 0
         self.last_activity = time.monotonic()
         self.abort_event = asyncio.Event()
         self.closing = False
         self.closed = asyncio.Event()
-        self.has_lease = True
         self.agen: AsyncIterator[None] | None = None
         self._abort: Callable[[], None] | None = None
+
+    @property
+    def has_lease(self) -> bool:
+        return True if self.lease is None else self.lease.has_lease
 
     def touch(self) -> None:
         self.last_activity = time.monotonic()
@@ -48,6 +53,7 @@ class LocalDirectory:
         self._cls = cls
         self._idle_timeout = idle_timeout
         self._sweep_interval = sweep_interval
+        self.lease: Lease | None = None
         self._entries: dict[str, _Entry] = {}
         self._sweep_task: asyncio.Task[None] | None = None
         self._background: set[asyncio.Task[None]] = set()
@@ -127,10 +133,19 @@ class LocalDirectory:
         if self._background:
             await asyncio.gather(*list(self._background), return_exceptions=True)
 
+    def abort_all(self) -> None:
+        for entry in list(self._entries.values()):
+            task = entry.task
+            if task is None or not task.done() or task.cancelled() or task.exception():
+                continue
+            record = task.result()
+            if not record.closing:
+                self._schedule_close(entry, record, cancel=True)
+
     async def _activate(self, entry: _Entry) -> InstanceRecord:
         instance = self._cls()
         instance.id = entry.id
-        record = InstanceRecord(entry.id, instance)
+        record = InstanceRecord(entry.id, instance, lease=self.lease)
         record._abort = lambda: self._schedule_close(entry, record, cancel=True)
         instance._pinned_record = record
         agen = instance.lifespan()
