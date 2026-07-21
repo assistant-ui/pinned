@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 import inspect
+import os
 import typing
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Request
 
 from .api import PinnedAPI
 from .directory import LocalDirectory
+from .lease import Lease
+from .registration import RegistrationClient
 from .routing import RouteSpec, routes_of
 
 _FETCH_METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
@@ -21,16 +25,18 @@ class PinnedRouter(APIRouter):
         *,
         control_plane: str | None = None,
         advertise: str | None = None,
+        namespace: str | None = None,
+        token: str | None = None,
         idle_timeout: float = 300.0,
         sweep_interval: float | None = None,
+        lease_ttl: float = 15.0,
+        renew_interval: float = 3.0,
         **kwargs: Any,
     ) -> None:
         if not (isinstance(cls, type) and issubclass(cls, PinnedAPI)):
             raise TypeError("PinnedRouter requires a PinnedAPI subclass")
-        if control_plane is not None:
-            raise NotImplementedError(
-                "control plane mode is not implemented yet; omit control_plane for local mode"
-            )
+        control_plane = control_plane or os.environ.get("CONTROL_PLANE_URL")
+        advertise = advertise or os.environ.get("ADVERTISE_URL")
         if sweep_interval is None:
             sweep_interval = max(min(idle_timeout / 10, 30.0), 0.05)
         self.cls = cls
@@ -38,15 +44,53 @@ class PinnedRouter(APIRouter):
         self.directory = LocalDirectory(
             cls, idle_timeout=idle_timeout, sweep_interval=sweep_interval
         )
+        self.lease: Lease | None = None
+        self.registration: RegistrationClient | None = None
+        if control_plane is not None:
+            token = token or os.environ.get("PINBOARD_TOKEN")
+            if token is None:
+                raise ValueError(
+                    "control plane mode requires a token (PINBOARD_TOKEN or token=)"
+                )
+            if advertise is None:
+                raise ValueError(
+                    "control plane mode requires an advertise URL (ADVERTISE_URL or advertise=)"
+                )
+            namespace = namespace or urlsplit(advertise).path.rstrip("/") or None
+            if namespace is None:
+                raise ValueError(
+                    "control plane mode requires a namespace (namespace= or a path "
+                    "on the advertise URL)"
+                )
+            self.lease = Lease(
+                abort_after=lease_ttl * (10 / 15),
+                fence_after=lease_ttl * (13 / 15),
+                on_abort=self.directory.abort_all,
+            )
+            self.directory.lease = self.lease
+            self.registration = RegistrationClient(
+                control_plane=control_plane,
+                token=token,
+                namespaces=[namespace],
+                advertise=advertise,
+                lease=self.lease,
+                renew_interval=renew_interval,
+            )
         super().__init__(lifespan=self.lifespan, **kwargs)
         self._mount_handlers()
 
     @asynccontextmanager
     async def lifespan(self, app: Any = None) -> AsyncIterator[None]:
         self.directory.start()
+        if self.registration is not None:
+            self.registration.start()
         try:
             yield
         finally:
+            if self.registration is not None:
+                await self.registration.stop()
+            if self.lease is not None:
+                await self.lease.close()
             await self.directory.shutdown()
 
     def _mount_handlers(self) -> None:
