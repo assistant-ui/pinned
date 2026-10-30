@@ -45,9 +45,11 @@ test("two concurrent placements pick exactly one winner", async () => {
   const redis = new MemoryRedis();
   await addWorker(redis, 1, 100);
   await addWorker(redis, 2, 900);
+  // A fixed draw: Math.random would pick which pickPowerOfTwo branches run, so
+  // coverage changed from run to run.
   const results = await Promise.all([
-    resolvePlacement(redis, NS, "t1"),
-    resolvePlacement(redis, NS, "t1"),
+    resolvePlacement(redis, NS, "t1", () => 0),
+    resolvePlacement(redis, NS, "t1", () => 0),
   ]);
   for (const r of results) assert.equal(r.kind, "forward");
   const epochs = results.map((r) => (r.kind === "forward" ? r.worker.epoch : -1));
@@ -61,6 +63,14 @@ test("power-of-two-choices prefers headroom", async () => {
   await addWorker(redis, 1, 100);
   await addWorker(redis, 2, 900);
   const resolution = await resolvePlacement(redis, NS, "t1", () => 0);
+  assert.equal(resolution.kind === "forward" && resolution.worker.epoch, 2);
+});
+
+test("power-of-two-choices prefers headroom when the roomier worker is drawn first", async () => {
+  const redis = new MemoryRedis();
+  await addWorker(redis, 1, 100);
+  await addWorker(redis, 2, 900);
+  const resolution = await resolvePlacement(redis, NS, "t1", () => 0.99);
   assert.equal(resolution.kind === "forward" && resolution.worker.epoch, 2);
 });
 
