@@ -8,8 +8,9 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/src/main.js",
-    "test": "tsc && node --test \"dist/test/*.test.js\"",
-    "typecheck": "tsc --noEmit"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "test:coverage": "vitest run --coverage --coverage.reporter=text --coverage.reporter=html --coverage.reporter=json-summary"
   },
   "engines": {
     "node": ">=20"
@@ -22,6 +23,8 @@
   "devDependencies": {
     "@types/node": "^26.6.6",
     "@types/ws": "^8.18.1",
-    "typescript": "^5.8.3"
+    "@vitest/coverage-v8": "^5.0.5",
+    "typescript": "^5.8.3",
+    "vitest": "^5.0.5"
   }
 }

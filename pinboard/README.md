@@ -6,6 +6,8 @@ Plain Node, no framework: `node:http` for the server, `undici` for upstream requ
 
 ## Running
 
+Needs Node.js 26.13.0 (pinned in `.node-version`).
+
 ```sh
 npm install
 npm run build
@@ -18,7 +20,7 @@ PINBOARD_TOKEN=... REDIS_URL=redis://localhost:6379 npm start
 | `REDIS_URL` | `redis://localhost:6379` | Redis connection URL; the special value `memory:` uses an in-process store (single node only, dev and smoke tests) |
 | `PINBOARD_TOKEN` | required | Deployment token; workers must present it as `Authorization: Bearer <token>` on the registration WS (and on `/registry/*` introspection calls) |
 
-Tests need no Redis server: `npm test` (node:test against the in-memory store).
+Tests need no Redis server: `npm test` runs Vitest against the in-memory store, and `npm run test:coverage` adds a v8 coverage report checked against the thresholds in `vitest.config.ts`. The Python integration test (`tests/test_pinboard_integration.py`) starts the built `dist/src/main.js`, so run `npm run build` first or it skips.
 
 ## Request routing and placement
 
