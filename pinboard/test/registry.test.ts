@@ -84,6 +84,22 @@ class WsClient {
   }
 }
 
+// Resolves once the server writes `key`. A fixed sleep loses the race when a
+// loaded machine stalls the process after the timer is armed.
+function nextWrite(redis: MemoryRedis, key: string): Promise<void> {
+  const set = redis.set.bind(redis);
+  return new Promise((resolve) => {
+    redis.set = async (k, value, opts) => {
+      const result = await set(k, value, opts);
+      if (k === key) {
+        redis.set = set;
+        resolve();
+      }
+      return result;
+    };
+  });
+}
+
 test("rejects a registration WS without a matching token", async () => {
   const h = await startHarness();
   try {
@@ -150,9 +166,9 @@ test("disconnect blacks out placements, then frees them after the window", async
     const placed = await resolvePlacement(h.redis, NS, "t1");
     assert.equal(placed.kind === "forward" && placed.worker.epoch, epochA);
 
+    const markedDead = nextWrite(h.redis, workerKey(epochA));
     a.ws.close();
-    await once(a.ws, "close");
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await Promise.all([once(a.ws, "close"), markedDead]);
 
     const during = await resolvePlacement(h.redis, NS, "t1");
     assert.equal(during.kind, "blackout");
@@ -180,8 +196,9 @@ test("headroom updates steer power-of-two placement", async () => {
   try {
     const client = new WsClient(h.port, TOKEN);
     const epoch = await client.register(100);
+    const written = nextWrite(h.redis, workerKey(epoch));
     client.send({ v: 1, type: "headroom", headroom: 12_345 });
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await written;
     const raw = await h.redis.get(workerKey(epoch));
     assert.ok(raw !== null);
     assert.equal((JSON.parse(raw) as { headroom: number }).headroom, 12_345);
