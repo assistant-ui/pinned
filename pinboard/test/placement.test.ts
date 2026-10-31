@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { MemoryRedis } from "../src/memory-redis.js";
 import { evictPlacement, resolvePlacement } from "../src/placement.js";
